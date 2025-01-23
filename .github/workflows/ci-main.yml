@@ -1,13 +1,5 @@
 name: Main CI
-on:
-  push:
-    branches:
-      - "master"
-    tags:
-      - "*"
-  pull_request:
-    branches:
-      - "*"
+on: workflow_dispatch
 
 env:
   dockerhub_publish: ${{ secrets.DOCKER_PASS != '' }}

@@ -27,7 +27,7 @@ public final class S3ProxyConstants {
             "s3proxy.identity";
     
     public static final String PROPERTY_LDS_PROXY_BACKEND=
-    		"s3proxy-lds-backend-proxy";
+    		"s3proxy.lds-backend-proxy";
     
     /**
      * Path to prepend to all requests, e.g.,

@@ -16,8 +16,8 @@
 
 package org.gaul.s3proxy;
 
-import static java.util.Objects.requireNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.util.Objects.requireNonNull;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -26,11 +26,6 @@ import java.util.Objects;
 import java.util.Properties;
 
 import javax.net.ssl.SSLContext;
-
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
 
 import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http.UriCompliance;
@@ -44,476 +39,433 @@ import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.jclouds.blobstore.BlobStore;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+
 /**
  * S3Proxy translates S3 HTTP operations into jclouds provider-agnostic
- * operations.  This allows applications using the S3 API to interface with any
- * provider that jclouds supports, e.g., EMC Atmos, Microsoft Azure,
- * OpenStack Swift.
+ * operations. This allows applications using the S3 API to interface with any
+ * provider that jclouds supports, e.g., EMC Atmos, Microsoft Azure, OpenStack
+ * Swift.
  */
 public final class S3Proxy {
-    private final Server server;
-    private final S3ProxyHandlerJetty handler;
-    private final boolean listenHTTP;
-    private final boolean listenHTTPS;
+	private final Server server;
+	private final S3ProxyHandlerJetty handler;
+	private final boolean listenHTTP;
+	private final boolean listenHTTPS;
 
-    S3Proxy(Builder builder) {
-        checkArgument(builder.endpoint != null ||
-                        builder.secureEndpoint != null,
-                "Must provide endpoint or secure-endpoint");
-        if (builder.endpoint != null) {
-            checkArgument(builder.endpoint.getPath().isEmpty(),
-                    "endpoint path must be empty, was: %s",
-                    builder.endpoint.getPath());
-        }
-        if (builder.secureEndpoint != null) {
-            checkArgument(builder.secureEndpoint.getPath().isEmpty(),
-                    "secure-endpoint path must be empty, was: %s",
-                    builder.secureEndpoint.getPath());
-            if (builder.sslContext == null) {
-                requireNonNull(builder.keyStorePath,
-                        "Must provide keyStorePath with HTTPS endpoint");
-                requireNonNull(builder.keyStorePassword,
-                        "Must provide keyStorePassword with HTTPS endpoint");
-            }
-        }
-        checkArgument(Strings.isNullOrEmpty(builder.identity) ^
-                !Strings.isNullOrEmpty(builder.credential),
-                "Must provide both identity and credential");
+	S3Proxy(Builder builder) {
+		checkArgument(builder.endpoint != null || builder.secureEndpoint != null,
+				"Must provide endpoint or secure-endpoint");
+		if (builder.endpoint != null) {
+			checkArgument(builder.endpoint.getPath().isEmpty(), "endpoint path must be empty, was: %s",
+					builder.endpoint.getPath());
+		}
+		if (builder.secureEndpoint != null) {
+			checkArgument(builder.secureEndpoint.getPath().isEmpty(), "secure-endpoint path must be empty, was: %s",
+					builder.secureEndpoint.getPath());
+			if (builder.sslContext == null) {
+				requireNonNull(builder.keyStorePath, "Must provide keyStorePath with HTTPS endpoint");
+				requireNonNull(builder.keyStorePassword, "Must provide keyStorePassword with HTTPS endpoint");
+			}
+		}
+		checkArgument(Strings.isNullOrEmpty(builder.identity) ^ !Strings.isNullOrEmpty(builder.credential),
+				"Must provide both identity and credential");
 
-        var pool = new QueuedThreadPool(builder.jettyMaxThreads);
-        pool.setName("S3Proxy-Jetty");
-        server = new Server(pool);
+		var pool = new QueuedThreadPool(builder.jettyMaxThreads);
+		pool.setName("S3Proxy-Jetty");
+		server = new Server(pool);
 
-        if (builder.servicePath != null && !builder.servicePath.isEmpty()) {
-            var context = new ContextHandler();
-            context.setContextPath(builder.servicePath);
-        }
+		if (builder.servicePath != null && !builder.servicePath.isEmpty()) {
+			var context = new ContextHandler();
+			context.setContextPath(builder.servicePath);
+		}
 
-        var httpConfiguration = new HttpConfiguration();
-        httpConfiguration.setHttpCompliance(HttpCompliance.LEGACY);
-        httpConfiguration.setUriCompliance(UriCompliance.LEGACY);
-        var src = new SecureRequestCustomizer();
-        src.setSniHostCheck(false);
-        httpConfiguration.addCustomizer(src);
-        HttpConnectionFactory httpConnectionFactory =
-                new HttpConnectionFactory(httpConfiguration);
-        ServerConnector connector;
-        if (builder.endpoint != null) {
-            connector = new ServerConnector(server, httpConnectionFactory);
-            connector.setHost(builder.endpoint.getHost());
-            connector.setPort(builder.endpoint.getPort());
-            server.addConnector(connector);
-            listenHTTP = true;
-        } else {
-            listenHTTP = false;
-        }
+		var httpConfiguration = new HttpConfiguration();
+		httpConfiguration.setHttpCompliance(HttpCompliance.LEGACY);
+		httpConfiguration.setUriCompliance(UriCompliance.LEGACY);
+		var src = new SecureRequestCustomizer();
+		src.setSniHostCheck(false);
+		httpConfiguration.addCustomizer(src);
+		HttpConnectionFactory httpConnectionFactory = new HttpConnectionFactory(httpConfiguration);
+		ServerConnector connector;
+		if (builder.endpoint != null) {
+			connector = new ServerConnector(server, httpConnectionFactory);
+			connector.setHost(builder.endpoint.getHost());
+			connector.setPort(builder.endpoint.getPort());
+			server.addConnector(connector);
+			listenHTTP = true;
+		} else {
+			listenHTTP = false;
+		}
 
-        if (builder.secureEndpoint != null) {
-            SslContextFactory.Server sslContextFactory =
-                new SslContextFactory.Server();
-            if (builder.sslContext != null) {
-                sslContextFactory.setSslContext(builder.sslContext);
-            } else {
-                sslContextFactory.setKeyStorePath(builder.keyStorePath);
-                sslContextFactory.setKeyStorePassword(builder.keyStorePassword);
-            }
-            connector = new ServerConnector(server, sslContextFactory,
-                    httpConnectionFactory);
-            connector.setHost(builder.secureEndpoint.getHost());
-            connector.setPort(builder.secureEndpoint.getPort());
-            server.addConnector(connector);
-            listenHTTPS = true;
-        } else {
-            listenHTTPS = false;
-        }
-        handler = new S3ProxyHandlerJetty(builder.blobStore,
-                builder.authenticationType, builder.identity,
-                builder.credential, builder.virtualHost,
-                builder.maxSinglePartObjectSize,
-                builder.v4MaxNonChunkedRequestSize,
-                builder.ignoreUnknownHeaders, builder.corsRules,
-                builder.servicePath, builder.maximumTimeSkew);
-        server.setHandler(handler);
-    }
+		if (builder.secureEndpoint != null) {
+			SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
+			if (builder.sslContext != null) {
+				sslContextFactory.setSslContext(builder.sslContext);
+			} else {
+				sslContextFactory.setKeyStorePath(builder.keyStorePath);
+				sslContextFactory.setKeyStorePassword(builder.keyStorePassword);
+			}
+			connector = new ServerConnector(server, sslContextFactory, httpConnectionFactory);
+			connector.setHost(builder.secureEndpoint.getHost());
+			connector.setPort(builder.secureEndpoint.getPort());
+			server.addConnector(connector);
+			listenHTTPS = true;
+		} else {
+			listenHTTPS = false;
+		}
+		handler = new S3ProxyHandlerJetty(builder.blobStore, builder.authenticationType, builder.identity,
+				builder.credential, builder.virtualHost, builder.maxSinglePartObjectSize,
+				builder.v4MaxNonChunkedRequestSize, builder.ignoreUnknownHeaders, builder.corsRules,
+				builder.servicePath, builder.maximumTimeSkew, new LDSProxyInterceptor(builder.ldsProxyBackend));
+		server.setHandler(handler);
+	}
 
-    public static final class Builder {
-        private BlobStore blobStore;
-        private URI endpoint;
-        private URI secureEndpoint;
-        private String servicePath;
-        private AuthenticationType authenticationType =
-                AuthenticationType.NONE;
-        private String identity;
-        private String credential;
-        private SSLContext sslContext;
-        private String keyStorePath;
-        private String keyStorePassword;
-        private String virtualHost;
-        private long maxSinglePartObjectSize = 5L * 1024 * 1024 * 1024;
-        private long v4MaxNonChunkedRequestSize = 128 * 1024 * 1024;
-        private boolean ignoreUnknownHeaders;
-        private CrossOriginResourceSharing corsRules;
-        private int jettyMaxThreads = 200;  // sourced from QueuedThreadPool()
-        private int maximumTimeSkew = 15 * 60;
+	public static final class Builder {
+		private BlobStore blobStore;
+		private URI endpoint;
+		private URI secureEndpoint;
+		private URI ldsProxyBackend;
+		private String servicePath;
+		private AuthenticationType authenticationType = AuthenticationType.NONE;
+		private String identity;
+		private String credential;
+		private SSLContext sslContext;
+		private String keyStorePath;
+		private String keyStorePassword;
+		private String virtualHost;
+		private long maxSinglePartObjectSize = 5L * 1024 * 1024 * 1024;
+		private long v4MaxNonChunkedRequestSize = 128 * 1024 * 1024;
+		private boolean ignoreUnknownHeaders;
+		private CrossOriginResourceSharing corsRules;
+		private int jettyMaxThreads = 200; // sourced from QueuedThreadPool()
+		private int maximumTimeSkew = 15 * 60;
 
-        Builder() {
-        }
+		Builder() {
+		}
 
-        public S3Proxy build() {
-            return new S3Proxy(this);
-        }
+		public S3Proxy build() {
+			return new S3Proxy(this);
+		}
 
-        public static Builder fromProperties(Properties properties)
-                throws URISyntaxException {
-            var builder = new Builder();
+		public static Builder fromProperties(Properties properties) throws URISyntaxException {
+			var builder = new Builder();
 
-            String endpoint = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_ENDPOINT);
-            String secureEndpoint = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_SECURE_ENDPOINT);
-            boolean hasEndpoint = !Strings.isNullOrEmpty(endpoint);
-            boolean hasSecureEndpoint = !Strings.isNullOrEmpty(secureEndpoint);
-            if (!hasEndpoint && !hasSecureEndpoint) {
-                throw new IllegalArgumentException(
-                        "Properties file must contain: " +
-                        S3ProxyConstants.PROPERTY_ENDPOINT + " or " +
-                        S3ProxyConstants.PROPERTY_SECURE_ENDPOINT);
-            }
-            if (hasEndpoint) {
-                builder.endpoint(new URI(endpoint));
-            }
-            if (hasSecureEndpoint) {
-                builder.secureEndpoint(new URI(secureEndpoint));
-            }
+			String endpoint = properties.getProperty(S3ProxyConstants.PROPERTY_ENDPOINT);
+			String secureEndpoint = properties.getProperty(S3ProxyConstants.PROPERTY_SECURE_ENDPOINT);
+			boolean hasEndpoint = !Strings.isNullOrEmpty(endpoint);
+			boolean hasSecureEndpoint = !Strings.isNullOrEmpty(secureEndpoint);
+			if (!hasEndpoint && !hasSecureEndpoint) {
+				throw new IllegalArgumentException("Properties file must contain: " + S3ProxyConstants.PROPERTY_ENDPOINT
+						+ " or " + S3ProxyConstants.PROPERTY_SECURE_ENDPOINT);
+			}
+			if (hasEndpoint) {
+				builder.endpoint(new URI(endpoint));
+			}
+			if (hasSecureEndpoint) {
+				builder.secureEndpoint(new URI(secureEndpoint));
+			}
 
-            String authorizationString = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_AUTHORIZATION);
-            if (authorizationString == null) {
-                throw new IllegalArgumentException(
-                        "Properties file must contain: " +
-                        S3ProxyConstants.PROPERTY_AUTHORIZATION);
-            }
+			String authorizationString = properties.getProperty(S3ProxyConstants.PROPERTY_AUTHORIZATION);
+			if (authorizationString == null) {
+				throw new IllegalArgumentException(
+						"Properties file must contain: " + S3ProxyConstants.PROPERTY_AUTHORIZATION);
+			}
 
-            AuthenticationType authorization =
-                    AuthenticationType.fromString(authorizationString);
-            String localIdentity = null;
-            String localCredential = null;
-            switch (authorization) {
-            case AWS_V2:
-            case AWS_V4:
-            case AWS_V2_OR_V4:
-                localIdentity = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_IDENTITY);
-                localCredential = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CREDENTIAL);
-                if (localIdentity == null || localCredential == null) {
-                    throw new IllegalArgumentException("Must specify both " +
-                            S3ProxyConstants.PROPERTY_IDENTITY + " and " +
-                            S3ProxyConstants.PROPERTY_CREDENTIAL +
-                            " when using authentication");
-                }
-                break;
-            case NONE:
-                break;
-            default:
-                throw new IllegalArgumentException(
-                        S3ProxyConstants.PROPERTY_AUTHORIZATION +
-                        " invalid value, was: " + authorization);
-            }
+			String ldsProxyBackend = properties.getProperty(S3ProxyConstants.PROPERTY_LDS_PROXY_BACKEND);
+			boolean hasLdsProxyBackend = !Strings.isNullOrEmpty(ldsProxyBackend);
+			if (!hasLdsProxyBackend) {
+				throw new IllegalArgumentException(
+						"LDS error: Properties file must contain: " + S3ProxyConstants.PROPERTY_LDS_PROXY_BACKEND);
+			}
+			if (hasLdsProxyBackend) {
+				builder.ldsBackendProxy(new URI(ldsProxyBackend));
+			}
 
-            if (localIdentity != null || localCredential != null) {
-                builder.awsAuthentication(authorization, localIdentity,
-                        localCredential);
-            }
+			AuthenticationType authorization = AuthenticationType.fromString(authorizationString);
+			String localIdentity = null;
+			String localCredential = null;
+			switch (authorization) {
+			case AWS_V2:
+			case AWS_V4:
+			case AWS_V2_OR_V4:
+				localIdentity = properties.getProperty(S3ProxyConstants.PROPERTY_IDENTITY);
+				localCredential = properties.getProperty(S3ProxyConstants.PROPERTY_CREDENTIAL);
+				if (localIdentity == null || localCredential == null) {
+					throw new IllegalArgumentException("Must specify both " + S3ProxyConstants.PROPERTY_IDENTITY
+							+ " and " + S3ProxyConstants.PROPERTY_CREDENTIAL + " when using authentication");
+				}
+				break;
+			case NONE:
+				break;
+			default:
+				throw new IllegalArgumentException(
+						S3ProxyConstants.PROPERTY_AUTHORIZATION + " invalid value, was: " + authorization);
+			}
 
-            String servicePath = Strings.nullToEmpty(properties.getProperty(
-                    S3ProxyConstants.PROPERTY_SERVICE_PATH));
-            if (servicePath != null) {
-                builder.servicePath(servicePath);
-            }
+			if (localIdentity != null || localCredential != null) {
+				builder.awsAuthentication(authorization, localIdentity, localCredential);
+			}
 
-            String keyStorePath = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_KEYSTORE_PATH);
-            String keyStorePassword = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_KEYSTORE_PASSWORD);
-            if (keyStorePath != null || keyStorePassword != null) {
-                builder.keyStore(keyStorePath, keyStorePassword);
-            }
+			String servicePath = Strings.nullToEmpty(properties.getProperty(S3ProxyConstants.PROPERTY_SERVICE_PATH));
+			if (servicePath != null) {
+				builder.servicePath(servicePath);
+			}
 
-            String virtualHost = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_VIRTUAL_HOST);
-            if (!Strings.isNullOrEmpty(virtualHost)) {
-                builder.virtualHost(virtualHost);
-            }
+			String keyStorePath = properties.getProperty(S3ProxyConstants.PROPERTY_KEYSTORE_PATH);
+			String keyStorePassword = properties.getProperty(S3ProxyConstants.PROPERTY_KEYSTORE_PASSWORD);
+			if (keyStorePath != null || keyStorePassword != null) {
+				builder.keyStore(keyStorePath, keyStorePassword);
+			}
 
-            String maxSinglePartObjectSize = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_MAX_SINGLE_PART_OBJECT_SIZE);
-            if (maxSinglePartObjectSize != null) {
-                builder.maxSinglePartObjectSize(Long.parseLong(
-                        maxSinglePartObjectSize));
-            }
+			String virtualHost = properties.getProperty(S3ProxyConstants.PROPERTY_VIRTUAL_HOST);
+			if (!Strings.isNullOrEmpty(virtualHost)) {
+				builder.virtualHost(virtualHost);
+			}
 
-            String v4MaxNonChunkedRequestSize = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_V4_MAX_NON_CHUNKED_REQUEST_SIZE);
-            if (v4MaxNonChunkedRequestSize != null) {
-                builder.v4MaxNonChunkedRequestSize(Long.parseLong(
-                        v4MaxNonChunkedRequestSize));
-            }
+			String maxSinglePartObjectSize = properties
+					.getProperty(S3ProxyConstants.PROPERTY_MAX_SINGLE_PART_OBJECT_SIZE);
+			if (maxSinglePartObjectSize != null) {
+				builder.maxSinglePartObjectSize(Long.parseLong(maxSinglePartObjectSize));
+			}
 
-            String ignoreUnknownHeaders = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_IGNORE_UNKNOWN_HEADERS);
-            if (!Strings.isNullOrEmpty(ignoreUnknownHeaders)) {
-                builder.ignoreUnknownHeaders(Boolean.parseBoolean(
-                        ignoreUnknownHeaders));
-            }
+			String v4MaxNonChunkedRequestSize = properties
+					.getProperty(S3ProxyConstants.PROPERTY_V4_MAX_NON_CHUNKED_REQUEST_SIZE);
+			if (v4MaxNonChunkedRequestSize != null) {
+				builder.v4MaxNonChunkedRequestSize(Long.parseLong(v4MaxNonChunkedRequestSize));
+			}
 
-            String corsAllowAll = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_CORS_ALLOW_ALL);
-            if (!Strings.isNullOrEmpty(corsAllowAll) && Boolean.parseBoolean(
-                         corsAllowAll)) {
-                builder.corsRules(new CrossOriginResourceSharing());
-            } else {
-                String corsAllowOrigins = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CORS_ALLOW_ORIGINS, "");
-                String corsAllowMethods = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CORS_ALLOW_METHODS, "");
-                String corsAllowHeaders = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CORS_ALLOW_HEADERS, "");
-                String corsExposedHeaders = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CORS_EXPOSED_HEADERS, "");
-                String allowCredentials = properties.getProperty(
-                        S3ProxyConstants.PROPERTY_CORS_ALLOW_CREDENTIAL, "");
+			String ignoreUnknownHeaders = properties.getProperty(S3ProxyConstants.PROPERTY_IGNORE_UNKNOWN_HEADERS);
+			if (!Strings.isNullOrEmpty(ignoreUnknownHeaders)) {
+				builder.ignoreUnknownHeaders(Boolean.parseBoolean(ignoreUnknownHeaders));
+			}
 
-                Splitter splitter = Splitter.on(" ").trimResults()
-                        .omitEmptyStrings();
+			String corsAllowAll = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_ALLOW_ALL);
+			if (!Strings.isNullOrEmpty(corsAllowAll) && Boolean.parseBoolean(corsAllowAll)) {
+				builder.corsRules(new CrossOriginResourceSharing());
+			} else {
+				String corsAllowOrigins = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_ALLOW_ORIGINS, "");
+				String corsAllowMethods = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_ALLOW_METHODS, "");
+				String corsAllowHeaders = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_ALLOW_HEADERS, "");
+				String corsExposedHeaders = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_EXPOSED_HEADERS, "");
+				String allowCredentials = properties.getProperty(S3ProxyConstants.PROPERTY_CORS_ALLOW_CREDENTIAL, "");
 
-                //Validate configured methods
-                Collection<String> allowedMethods = Lists.newArrayList(
-                        splitter.split(corsAllowMethods));
-                allowedMethods.removeAll(
-                        CrossOriginResourceSharing.SUPPORTED_METHODS);
-                if (!allowedMethods.isEmpty()) {
-                    throw new IllegalArgumentException(
-                        S3ProxyConstants.PROPERTY_CORS_ALLOW_METHODS +
-                        " contains not supported values: " + Joiner.on(" ")
-                        .join(allowedMethods));
-                }
+				Splitter splitter = Splitter.on(" ").trimResults().omitEmptyStrings();
 
-                builder.corsRules(new CrossOriginResourceSharing(
-                        splitter.splitToList(corsAllowOrigins),
-                        splitter.splitToList(corsAllowMethods),
-                        splitter.splitToList(corsAllowHeaders),
-                        splitter.splitToList(corsExposedHeaders),
-                        allowCredentials));
-            }
+				// Validate configured methods
+				Collection<String> allowedMethods = Lists.newArrayList(splitter.split(corsAllowMethods));
+				allowedMethods.removeAll(CrossOriginResourceSharing.SUPPORTED_METHODS);
+				if (!allowedMethods.isEmpty()) {
+					throw new IllegalArgumentException(S3ProxyConstants.PROPERTY_CORS_ALLOW_METHODS
+							+ " contains not supported values: " + Joiner.on(" ").join(allowedMethods));
+				}
 
-            String jettyMaxThreads = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_JETTY_MAX_THREADS);
-            if (jettyMaxThreads != null) {
-                builder.jettyMaxThreads(Integer.parseInt(jettyMaxThreads));
-            }
+				builder.corsRules(new CrossOriginResourceSharing(splitter.splitToList(corsAllowOrigins),
+						splitter.splitToList(corsAllowMethods), splitter.splitToList(corsAllowHeaders),
+						splitter.splitToList(corsExposedHeaders), allowCredentials));
+			}
 
-            String maximumTimeSkew = properties.getProperty(
-                    S3ProxyConstants.PROPERTY_MAXIMUM_TIME_SKEW);
-            if (maximumTimeSkew != null && !maximumTimeSkew.trim().isEmpty()) {
-                builder.maximumTimeSkew(Integer.parseInt(maximumTimeSkew));
-            }
+			String jettyMaxThreads = properties.getProperty(S3ProxyConstants.PROPERTY_JETTY_MAX_THREADS);
+			if (jettyMaxThreads != null) {
+				builder.jettyMaxThreads(Integer.parseInt(jettyMaxThreads));
+			}
 
-            return builder;
-        }
+			String maximumTimeSkew = properties.getProperty(S3ProxyConstants.PROPERTY_MAXIMUM_TIME_SKEW);
+			if (maximumTimeSkew != null && !maximumTimeSkew.trim().isEmpty()) {
+				builder.maximumTimeSkew(Integer.parseInt(maximumTimeSkew));
+			}
 
-        public Builder blobStore(BlobStore blobStore) {
-            this.blobStore = requireNonNull(blobStore);
-            return this;
-        }
+			return builder;
+		}
 
-        public Builder endpoint(URI endpoint) {
-            this.endpoint = requireNonNull(endpoint);
-            return this;
-        }
+		public Builder blobStore(BlobStore blobStore) {
+			this.blobStore = requireNonNull(blobStore);
+			return this;
+		}
 
-        public Builder secureEndpoint(URI secureEndpoint) {
-            this.secureEndpoint = requireNonNull(secureEndpoint);
-            return this;
-        }
+		public Builder endpoint(URI endpoint) {
+			this.endpoint = requireNonNull(endpoint);
+			return this;
+		}
 
-        public Builder awsAuthentication(AuthenticationType authenticationType,
-                String identity, String credential) {
-            this.authenticationType = authenticationType;
-            if (!AuthenticationType.NONE.equals(authenticationType)) {
-                this.identity = requireNonNull(identity);
-                this.credential = requireNonNull(credential);
-            }
-            return this;
-        }
+		public Builder ldsBackendProxy(URI endpoint) {
+			this.ldsProxyBackend = requireNonNull(endpoint);
+			return this;
+		}
 
-        public Builder sslContext(SSLContext sslContext) {
-            this.sslContext = requireNonNull(sslContext);
-            this.keyStorePath = null;
-            this.keyStorePassword = null;
-            return this;
-        }
+		public Builder secureEndpoint(URI secureEndpoint) {
+			this.secureEndpoint = requireNonNull(secureEndpoint);
+			return this;
+		}
 
-        public Builder keyStore(String keyStorePath, String keyStorePassword) {
-            this.keyStorePath = requireNonNull(keyStorePath);
-            this.keyStorePassword = requireNonNull(keyStorePassword);
-            this.sslContext = null;
-            return this;
-        }
+		public Builder awsAuthentication(AuthenticationType authenticationType, String identity, String credential) {
+			this.authenticationType = authenticationType;
+			if (!AuthenticationType.NONE.equals(authenticationType)) {
+				this.identity = requireNonNull(identity);
+				this.credential = requireNonNull(credential);
+			}
+			return this;
+		}
 
-        public Builder virtualHost(String virtualHost) {
-            this.virtualHost = requireNonNull(virtualHost);
-            return this;
-        }
+		public Builder sslContext(SSLContext sslContext) {
+			this.sslContext = requireNonNull(sslContext);
+			this.keyStorePath = null;
+			this.keyStorePassword = null;
+			return this;
+		}
 
-        public Builder maxSinglePartObjectSize(long maxSinglePartObjectSize) {
-            if (maxSinglePartObjectSize <= 0) {
-                throw new IllegalArgumentException(
-                        "must be greater than zero, was: " +
-                        maxSinglePartObjectSize);
-            }
-            this.maxSinglePartObjectSize = maxSinglePartObjectSize;
-            return this;
-        }
+		public Builder keyStore(String keyStorePath, String keyStorePassword) {
+			this.keyStorePath = requireNonNull(keyStorePath);
+			this.keyStorePassword = requireNonNull(keyStorePassword);
+			this.sslContext = null;
+			return this;
+		}
 
-        public Builder v4MaxNonChunkedRequestSize(
-                long v4MaxNonChunkedRequestSize) {
-            if (v4MaxNonChunkedRequestSize <= 0) {
-                throw new IllegalArgumentException(
-                        "must be greater than zero, was: " +
-                        v4MaxNonChunkedRequestSize);
-            }
-            this.v4MaxNonChunkedRequestSize = v4MaxNonChunkedRequestSize;
-            return this;
-        }
+		public Builder virtualHost(String virtualHost) {
+			this.virtualHost = requireNonNull(virtualHost);
+			return this;
+		}
 
-        public Builder ignoreUnknownHeaders(boolean ignoreUnknownHeaders) {
-            this.ignoreUnknownHeaders = ignoreUnknownHeaders;
-            return this;
-        }
+		public Builder maxSinglePartObjectSize(long maxSinglePartObjectSize) {
+			if (maxSinglePartObjectSize <= 0) {
+				throw new IllegalArgumentException("must be greater than zero, was: " + maxSinglePartObjectSize);
+			}
+			this.maxSinglePartObjectSize = maxSinglePartObjectSize;
+			return this;
+		}
 
-        public Builder corsRules(CrossOriginResourceSharing corsRules) {
-            this.corsRules = corsRules;
-            return this;
-        }
+		public Builder v4MaxNonChunkedRequestSize(long v4MaxNonChunkedRequestSize) {
+			if (v4MaxNonChunkedRequestSize <= 0) {
+				throw new IllegalArgumentException("must be greater than zero, was: " + v4MaxNonChunkedRequestSize);
+			}
+			this.v4MaxNonChunkedRequestSize = v4MaxNonChunkedRequestSize;
+			return this;
+		}
 
-        public Builder jettyMaxThreads(int jettyMaxThreads) {
-            this.jettyMaxThreads = jettyMaxThreads;
-            return this;
-        }
+		public Builder ignoreUnknownHeaders(boolean ignoreUnknownHeaders) {
+			this.ignoreUnknownHeaders = ignoreUnknownHeaders;
+			return this;
+		}
 
-        public Builder maximumTimeSkew(int maximumTimeSkew) {
-            this.maximumTimeSkew = maximumTimeSkew;
-            return this;
-        }
+		public Builder corsRules(CrossOriginResourceSharing corsRules) {
+			this.corsRules = corsRules;
+			return this;
+		}
 
-        public Builder servicePath(String s3ProxyServicePath) {
-            String path = Strings.nullToEmpty(s3ProxyServicePath);
+		public Builder jettyMaxThreads(int jettyMaxThreads) {
+			this.jettyMaxThreads = jettyMaxThreads;
+			return this;
+		}
 
-            if (!path.isEmpty()) {
-                if (!path.startsWith("/")) {
-                    path = "/" + path;
-                }
-            }
+		public Builder maximumTimeSkew(int maximumTimeSkew) {
+			this.maximumTimeSkew = maximumTimeSkew;
+			return this;
+		}
 
-            this.servicePath = path;
+		public Builder servicePath(String s3ProxyServicePath) {
+			String path = Strings.nullToEmpty(s3ProxyServicePath);
 
-            return this;
-        }
+			if (!path.isEmpty()) {
+				if (!path.startsWith("/")) {
+					path = "/" + path;
+				}
+			}
 
-        public URI getEndpoint() {
-            return endpoint;
-        }
+			this.servicePath = path;
 
-        public URI getSecureEndpoint() {
-            return secureEndpoint;
-        }
+			return this;
+		}
 
-        public String getServicePath() {
-            return servicePath;
-        }
+		public URI getEndpoint() {
+			return endpoint;
+		}
 
-        public String getIdentity() {
-            return identity;
-        }
+		public URI getSecureEndpoint() {
+			return secureEndpoint;
+		}
 
-        public String getCredential() {
-            return credential;
-        }
+		public String getServicePath() {
+			return servicePath;
+		}
 
-        @Override
-        public boolean equals(Object object) {
-            if (this == object) {
-                return true;
-            } else if (!(object instanceof S3Proxy.Builder)) {
-                return false;
-            }
-            S3Proxy.Builder that = (S3Proxy.Builder) object;
-            // do not check credentials or storage backend fields
-            return Objects.equals(this.endpoint, that.endpoint) &&
-                    Objects.equals(this.secureEndpoint, that.secureEndpoint) &&
-                    Objects.equals(this.sslContext, that.sslContext) &&
-                    Objects.equals(this.keyStorePath, that.keyStorePath) &&
-                    Objects.equals(this.keyStorePassword,
-                            that.keyStorePassword) &&
-                    Objects.equals(this.virtualHost, that.virtualHost) &&
-                    Objects.equals(this.servicePath, that.servicePath) &&
-                    this.maxSinglePartObjectSize ==
-                            that.maxSinglePartObjectSize &&
-                    this.v4MaxNonChunkedRequestSize ==
-                            that.v4MaxNonChunkedRequestSize &&
-                    this.ignoreUnknownHeaders == that.ignoreUnknownHeaders &&
-                    this.corsRules.equals(that.corsRules);
-        }
+		public String getIdentity() {
+			return identity;
+		}
 
-        @Override
-        public int hashCode() {
-            return Objects.hash(endpoint, secureEndpoint, sslContext,
-                    keyStorePath, keyStorePassword, virtualHost, servicePath,
-                    maxSinglePartObjectSize, v4MaxNonChunkedRequestSize,
-                    ignoreUnknownHeaders, corsRules);
-        }
-    }
+		public String getCredential() {
+			return credential;
+		}
 
-    public static Builder builder() {
-        return new Builder();
-    }
+		@Override
+		public boolean equals(Object object) {
+			if (this == object) {
+				return true;
+			} else if (!(object instanceof S3Proxy.Builder)) {
+				return false;
+			}
+			S3Proxy.Builder that = (S3Proxy.Builder) object;
+			// do not check credentials or storage backend fields
+			return Objects.equals(this.endpoint, that.endpoint)
+					&& Objects.equals(this.secureEndpoint, that.secureEndpoint)
+					&& Objects.equals(this.sslContext, that.sslContext)
+					&& Objects.equals(this.keyStorePath, that.keyStorePath)
+					&& Objects.equals(this.keyStorePassword, that.keyStorePassword)
+					&& Objects.equals(this.virtualHost, that.virtualHost)
+					&& Objects.equals(this.servicePath, that.servicePath)
+					&& this.maxSinglePartObjectSize == that.maxSinglePartObjectSize
+					&& this.v4MaxNonChunkedRequestSize == that.v4MaxNonChunkedRequestSize
+					&& this.ignoreUnknownHeaders == that.ignoreUnknownHeaders && this.corsRules.equals(that.corsRules);
+		}
 
-    public void start() throws Exception {
-        server.start();
-    }
+		@Override
+		public int hashCode() {
+			return Objects.hash(endpoint, secureEndpoint, sslContext, keyStorePath, keyStorePassword, virtualHost,
+					servicePath, maxSinglePartObjectSize, v4MaxNonChunkedRequestSize, ignoreUnknownHeaders, corsRules);
+		}
+	}
 
-    public void stop() throws Exception {
-        server.stop();
-    }
+	public static Builder builder() {
+		return new Builder();
+	}
 
-    public int getPort() {
-        if (listenHTTP) {
-            return ((ServerConnector) server.getConnectors()[0]).getLocalPort();
-        } else {
-            return -1;
-        }
-    }
+	public void start() throws Exception {
+		server.start();
+	}
 
-    public int getSecurePort() {
-        if (listenHTTPS) {
-            ServerConnector connector;
-            if (listenHTTP) {
-                connector = (ServerConnector) server.getConnectors()[1];
-            } else {
-                connector = (ServerConnector) server.getConnectors()[0];
-            }
-            return connector.getLocalPort();
-        }
+	public void stop() throws Exception {
+		server.stop();
+	}
 
-        return -1;
-    }
+	public int getPort() {
+		if (listenHTTP) {
+			return ((ServerConnector) server.getConnectors()[0]).getLocalPort();
+		} else {
+			return -1;
+		}
+	}
 
-    public String getState() {
-        return server.getState();
-    }
+	public int getSecurePort() {
+		if (listenHTTPS) {
+			ServerConnector connector;
+			if (listenHTTP) {
+				connector = (ServerConnector) server.getConnectors()[1];
+			} else {
+				connector = (ServerConnector) server.getConnectors()[0];
+			}
+			return connector.getLocalPort();
+		}
 
-    public void setBlobStoreLocator(BlobStoreLocator lookup) {
-        handler.getHandler().setBlobStoreLocator(lookup);
-    }
+		return -1;
+	}
+
+	public String getState() {
+		return server.getState();
+	}
+
+	public void setBlobStoreLocator(BlobStoreLocator lookup) {
+		handler.getHandler().setBlobStoreLocator(lookup);
+	}
 }

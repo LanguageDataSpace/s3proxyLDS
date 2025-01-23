@@ -23,11 +23,6 @@ import java.util.concurrent.TimeoutException;
 
 import javax.annotation.Nullable;
 
-import com.google.common.net.HttpHeaders;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.jclouds.blobstore.BlobStore;
@@ -40,146 +35,132 @@ import org.jclouds.util.Throwables2;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.net.HttpHeaders;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 /** Jetty-specific handler for S3 requests. */
 final class S3ProxyHandlerJetty extends AbstractHandler {
-    private static final Logger logger = LoggerFactory.getLogger(
-            S3ProxyHandlerJetty.class);
+	private static final Logger logger = LoggerFactory.getLogger(S3ProxyHandlerJetty.class);
 
-    private final S3ProxyHandler handler;
+	private final S3ProxyHandler handler;
+	private final LDSCustomInterceptorI customInterceptor;
 
-    S3ProxyHandlerJetty(final BlobStore blobStore,
-            AuthenticationType authenticationType, final String identity,
-            final String credential, @Nullable String virtualHost,
-            long maxSinglePartObjectSize, long v4MaxNonChunkedRequestSize,
-            boolean ignoreUnknownHeaders, CrossOriginResourceSharing corsRules,
-            String servicePath, int maximumTimeSkew) {
-        handler = new S3ProxyHandler(blobStore, authenticationType, identity,
-                credential, virtualHost, maxSinglePartObjectSize,
-                v4MaxNonChunkedRequestSize, ignoreUnknownHeaders, corsRules,
-                servicePath, maximumTimeSkew);
-    }
+	S3ProxyHandlerJetty(final BlobStore blobStore, AuthenticationType authenticationType, final String identity,
+			final String credential, @Nullable String virtualHost, long maxSinglePartObjectSize,
+			long v4MaxNonChunkedRequestSize, boolean ignoreUnknownHeaders, CrossOriginResourceSharing corsRules,
+			String servicePath, int maximumTimeSkew, LDSCustomInterceptorI customInterceptor) {
+		handler = new S3ProxyHandler(blobStore, authenticationType, identity, credential, virtualHost,
+				maxSinglePartObjectSize, v4MaxNonChunkedRequestSize, ignoreUnknownHeaders, corsRules, servicePath,
+				maximumTimeSkew);
+		this.customInterceptor = customInterceptor;
+	}
 
-    private void sendS3Exception(HttpServletRequest request,
-            HttpServletResponse response, S3Exception se)
-            throws IOException {
-        handler.sendSimpleErrorResponse(request, response,
-                se.getError(), se.getMessage(), se.getElements());
-    }
+	private void sendS3Exception(HttpServletRequest request, HttpServletResponse response, S3Exception se)
+			throws IOException {
+		handler.sendSimpleErrorResponse(request, response, se.getError(), se.getMessage(), se.getElements());
+	}
 
-    @Override
-    public void handle(String target, Request baseRequest,
-            HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-        try (InputStream is = request.getInputStream()) {
+	@Override
+	public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
+			throws IOException {
+		try (InputStream is = request.getInputStream()) {
 
-            // Set query encoding
-            baseRequest.setAttribute(S3ProxyConstants.ATTRIBUTE_QUERY_ENCODING,
-                    baseRequest.getQueryEncoding());
+			// Set query encoding
+			baseRequest.setAttribute(S3ProxyConstants.ATTRIBUTE_QUERY_ENCODING, baseRequest.getQueryEncoding());
 
-            handler.doHandle(baseRequest, request, response, is);
-            baseRequest.setHandled(true);
-        } catch (ContainerNotFoundException cnfe) {
-            S3ErrorCode code = S3ErrorCode.NO_SUCH_BUCKET;
-            handler.sendSimpleErrorResponse(request, response, code,
-                    code.getMessage(), Map.of());
-            baseRequest.setHandled(true);
-            return;
-        } catch (HttpResponseException hre) {
-            HttpResponse hr = hre.getResponse();
-            if (hr == null) {
-                logger.debug("HttpResponseException without HttpResponse:",
-                        hre);
-                response.sendError(
-                        HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                        hre.getMessage());
-                return;
-            }
+			if (customInterceptor != null) {
+				customInterceptor.intercept(request, response);
+			}
 
-            String eTag = hr.getFirstHeaderOrNull(HttpHeaders.ETAG);
-            if (eTag != null) {
-                response.setHeader(HttpHeaders.ETAG, eTag);
-            }
+			handler.doHandle(baseRequest, request, response, is);
+			baseRequest.setHandled(true);
+		} catch (ContainerNotFoundException cnfe) {
+			S3ErrorCode code = S3ErrorCode.NO_SUCH_BUCKET;
+			handler.sendSimpleErrorResponse(request, response, code, code.getMessage(), Map.of());
+			baseRequest.setHandled(true);
+			return;
+		} catch (HttpResponseException hre) {
+			HttpResponse hr = hre.getResponse();
+			if (hr == null) {
+				logger.debug("HttpResponseException without HttpResponse:", hre);
+				response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, hre.getMessage());
+				return;
+			}
 
-            int status = hr.getStatusCode();
-            switch (status) {
-            case 412:
-                sendS3Exception(request, response,
-                        new S3Exception(S3ErrorCode.PRECONDITION_FAILED));
-                break;
-            case 416:
-                sendS3Exception(request, response,
-                        new S3Exception(S3ErrorCode.INVALID_RANGE));
-                break;
-            case HttpServletResponse.SC_BAD_REQUEST:
-            case 422:  // Swift returns 422 Unprocessable Entity
-                sendS3Exception(request, response,
-                    new S3Exception(S3ErrorCode.BAD_DIGEST));
-                break;
-            default:
-                logger.debug("HttpResponseException:", hre);
-                response.setStatus(status);
-                break;
-            }
-            baseRequest.setHandled(true);
-            return;
-        } catch (IllegalArgumentException iae) {
-            logger.debug("IllegalArgumentException:", iae);
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST,
-                    iae.getMessage());
-            baseRequest.setHandled(true);
-            return;
-        } catch (IllegalStateException ise) {
-            // google-cloud-storage uses a different exception
-            if (ise.getMessage().startsWith("PreconditionFailed")) {
-                sendS3Exception(request, response,
-                        new S3Exception(S3ErrorCode.PRECONDITION_FAILED));
-                return;
-            }
-            logger.debug("IllegalStateException:", ise);
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST,
-                    ise.getMessage());
-            baseRequest.setHandled(true);
-            return;
-        } catch (KeyNotFoundException knfe) {
-            S3ErrorCode code = S3ErrorCode.NO_SUCH_KEY;
-            handler.sendSimpleErrorResponse(request, response, code,
-                    code.getMessage(), Map.of());
-            baseRequest.setHandled(true);
-            return;
-        } catch (S3Exception se) {
-            sendS3Exception(request, response, se);
-            baseRequest.setHandled(true);
-            return;
-        } catch (UnsupportedOperationException uoe) {
-            logger.debug("UnsupportedOperationException:", uoe);
-            response.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED,
-                    uoe.getMessage());
-            baseRequest.setHandled(true);
-            return;
-        } catch (Throwable throwable) {
-            if (Throwables2.getFirstThrowableOfType(throwable,
-                    AuthorizationException.class) != null) {
-                S3ErrorCode code = S3ErrorCode.ACCESS_DENIED;
-                handler.sendSimpleErrorResponse(request, response, code,
-                        code.getMessage(), Map.of());
-                baseRequest.setHandled(true);
-                return;
-            } else if (Throwables2.getFirstThrowableOfType(throwable,
-                    TimeoutException.class) != null) {
-                S3ErrorCode code = S3ErrorCode.REQUEST_TIMEOUT;
-                handler.sendSimpleErrorResponse(request, response, code,
-                        code.getMessage(), Map.of());
-                baseRequest.setHandled(true);
-                return;
-            } else {
-                logger.debug("Unknown exception:", throwable);
-                throw throwable;
-            }
-        }
-    }
+			String eTag = hr.getFirstHeaderOrNull(HttpHeaders.ETAG);
+			if (eTag != null) {
+				response.setHeader(HttpHeaders.ETAG, eTag);
+			}
 
-    public S3ProxyHandler getHandler() {
-        return this.handler;
-    }
+			int status = hr.getStatusCode();
+			switch (status) {
+			case 412:
+				sendS3Exception(request, response, new S3Exception(S3ErrorCode.PRECONDITION_FAILED));
+				break;
+			case 416:
+				sendS3Exception(request, response, new S3Exception(S3ErrorCode.INVALID_RANGE));
+				break;
+			case HttpServletResponse.SC_BAD_REQUEST:
+			case 422: // Swift returns 422 Unprocessable Entity
+				sendS3Exception(request, response, new S3Exception(S3ErrorCode.BAD_DIGEST));
+				break;
+			default:
+				logger.debug("HttpResponseException:", hre);
+				response.setStatus(status);
+				break;
+			}
+			baseRequest.setHandled(true);
+			return;
+		} catch (IllegalArgumentException iae) {
+			logger.debug("IllegalArgumentException:", iae);
+			response.sendError(HttpServletResponse.SC_BAD_REQUEST, iae.getMessage());
+			baseRequest.setHandled(true);
+			return;
+		} catch (IllegalStateException ise) {
+			// google-cloud-storage uses a different exception
+			if (ise.getMessage().startsWith("PreconditionFailed")) {
+				sendS3Exception(request, response, new S3Exception(S3ErrorCode.PRECONDITION_FAILED));
+				return;
+			}
+			logger.debug("IllegalStateException:", ise);
+			response.sendError(HttpServletResponse.SC_BAD_REQUEST, ise.getMessage());
+			baseRequest.setHandled(true);
+			return;
+		} catch (KeyNotFoundException knfe) {
+			S3ErrorCode code = S3ErrorCode.NO_SUCH_KEY;
+			handler.sendSimpleErrorResponse(request, response, code, code.getMessage(), Map.of());
+			baseRequest.setHandled(true);
+			return;
+		} catch (S3Exception se) {
+			sendS3Exception(request, response, se);
+			baseRequest.setHandled(true);
+			return;
+		} catch (UnsupportedOperationException uoe) {
+			logger.debug("UnsupportedOperationException:", uoe);
+			response.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED, uoe.getMessage());
+			baseRequest.setHandled(true);
+			return;
+		} catch (Throwable throwable) {
+			if (Throwables2.getFirstThrowableOfType(throwable, AuthorizationException.class) != null) {
+				S3ErrorCode code = S3ErrorCode.ACCESS_DENIED;
+				handler.sendSimpleErrorResponse(request, response, code, code.getMessage(), Map.of());
+				baseRequest.setHandled(true);
+				return;
+			} else if (Throwables2.getFirstThrowableOfType(throwable, TimeoutException.class) != null) {
+				S3ErrorCode code = S3ErrorCode.REQUEST_TIMEOUT;
+				handler.sendSimpleErrorResponse(request, response, code, code.getMessage(), Map.of());
+				baseRequest.setHandled(true);
+				return;
+			} else {
+				logger.debug("Unknown exception:", throwable);
+				throw throwable;
+			}
+		}
+	}
+
+	public S3ProxyHandler getHandler() {
+		return this.handler;
+	}
 }

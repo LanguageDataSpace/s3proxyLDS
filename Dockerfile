@@ -1,5 +1,5 @@
 FROM docker.io/library/eclipse-temurin:17-jre
-LABEL maintainer="Andrew Gaul <andrew@gaul.org>"
+LABEL maintainer="LanguageDataSpace"
 
 WORKDIR /opt/s3proxy
 
@@ -27,6 +27,7 @@ ENV \
     S3PROXY_ENCRYPTED_BLOBSTORE_PASSWORD="" \
     S3PROXY_ENCRYPTED_BLOBSTORE_SALT="" \
     S3PROXY_READ_ONLY_BLOBSTORE="false" \
+	S3PROXY_LDS_BACKEND_PROXY="none-lds" \
     JCLOUDS_PROVIDER="filesystem" \
     JCLOUDS_ENDPOINT="" \
     JCLOUDS_REGION="" \

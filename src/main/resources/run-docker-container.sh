@@ -3,6 +3,7 @@
 exec java \
     $S3PROXY_JAVA_OPTS \
     -DLOG_LEVEL="${LOG_LEVEL}" \
+    -Ds3proxy.s3proxy-lds-backend-proxy="${S3PROXY_LDS_BACKEND_PROXY}" \
     -Ds3proxy.endpoint="${S3PROXY_ENDPOINT}" \
     -Ds3proxy.secure-endpoint="${S3PROXY_SECURE_ENDPOINT}" \
     -Ds3proxy.virtual-host="${S3PROXY_VIRTUALHOST}" \

@@ -18,6 +18,7 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		System.out.println("LSD Inside intercept: " + backendUrl);
 		String token = request.getHeader("Authorization");
 		printRequest(request);
+		System.out.println(token);
 		if (token == null || !validateTokenWithBackend(token)) {
 			response.sendError(HttpServletResponse.SC_FORBIDDEN, "LDS storage invalid or missing token");
 			throw new IOException("Request blocked due to invalid token");

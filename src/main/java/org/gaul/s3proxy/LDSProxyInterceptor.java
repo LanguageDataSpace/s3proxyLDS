@@ -29,4 +29,17 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		return false;
 	}
 
+	private void printRequest(HttpServletRequest request) {
+		String method = request.getMethod();
+		String contextPath = request.getContextPath();
+		String pathInfo = request.getPathInfo();
+		String requestUrl = request.getRequestURL().toString();
+		String queryString = request.getQueryString();
+		System.out.println("method: " + method);
+		System.out.println("contextPath: " + contextPath);
+		System.out.println("pathInfo: " + pathInfo);
+		System.out.println("requestURL: " + requestUrl);
+		System.out.println("queryString: " + queryString);
+	}
+
 }

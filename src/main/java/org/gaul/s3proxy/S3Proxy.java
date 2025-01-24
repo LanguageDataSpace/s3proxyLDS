@@ -120,7 +120,8 @@ public final class S3Proxy {
 		handler = new S3ProxyHandlerJetty(builder.blobStore, builder.authenticationType, builder.identity,
 				builder.credential, builder.virtualHost, builder.maxSinglePartObjectSize,
 				builder.v4MaxNonChunkedRequestSize, builder.ignoreUnknownHeaders, builder.corsRules,
-				builder.servicePath, builder.maximumTimeSkew, new LDSProxyInterceptor(builder.ldsProxyBackend));
+				builder.servicePath, builder.maximumTimeSkew, new LDSProxyInterceptor(builder.ldsProxyBackend,
+						builder.ldsProxyPassword, builder.ldsProxyPassowrdHeader));
 		server.setHandler(handler);
 	}
 
@@ -129,6 +130,8 @@ public final class S3Proxy {
 		private URI endpoint;
 		private URI secureEndpoint;
 		private URI ldsProxyBackend;
+		private String ldsProxyPassword;
+		private String ldsProxyPassowrdHeader;
 		private String servicePath;
 		private AuthenticationType authenticationType = AuthenticationType.NONE;
 		private String identity;
@@ -183,6 +186,19 @@ public final class S3Proxy {
 			}
 			if (hasLdsProxyBackend) {
 				builder.ldsBackendProxy(new URI(ldsProxyBackend));
+			}
+
+			String ldsProxyPasswordStr = properties.getProperty(S3ProxyConstants.PROPERTY_LDS_PROXY_PASSWORD);
+			boolean hasProxyPassword = !Strings.isNullOrEmpty(ldsProxyPasswordStr);
+			if (hasProxyPassword) {
+				builder.ldsProxyPassword(ldsProxyPasswordStr);
+			}
+
+			String ldsProxyPasswordHeaderStr = properties
+					.getProperty(S3ProxyConstants.PROPERTY_LDS_PROXY_PASSWORD_HEADER);
+			boolean hasProxyPasswordHeader = !Strings.isNullOrEmpty(ldsProxyPasswordHeaderStr);
+			if (hasProxyPasswordHeader) {
+				builder.ldsProxyPasswordHeader(ldsProxyPasswordHeaderStr);
 			}
 
 			AuthenticationType authorization = AuthenticationType.fromString(authorizationString);
@@ -293,6 +309,16 @@ public final class S3Proxy {
 
 		public Builder ldsBackendProxy(URI endpoint) {
 			this.ldsProxyBackend = requireNonNull(endpoint);
+			return this;
+		}
+
+		public Builder ldsProxyPassword(String pass) {
+			this.ldsProxyPassword = requireNonNull(pass);
+			return this;
+		}
+
+		public Builder ldsProxyPasswordHeader(String passwordHeader) {
+			this.ldsProxyPassowrdHeader = requireNonNull(passwordHeader);
 			return this;
 		}
 

@@ -59,7 +59,18 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 			}
 
 			int responseCode = connection.getResponseCode();
-			return responseCode == HttpURLConnection.HTTP_OK;
+
+			if (!Strings.isNullOrEmpty(LDS_PROXY_PASSOWRD_HEADER) && !Strings.isNullOrEmpty(PROXY_PASS)) {
+				if (connection.getHeaderField(LDS_PROXY_PASSOWRD_HEADER).equals(PROXY_PASS)) {
+					return responseCode == HttpURLConnection.HTTP_OK;
+				} else {
+					System.out.println("LDS response from proxy with incorrect password and header combination");
+					return false;
+				}
+			} else {
+				return responseCode == HttpURLConnection.HTTP_OK;
+			}
+
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

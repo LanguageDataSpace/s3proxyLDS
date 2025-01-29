@@ -28,7 +28,7 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 	public void intercept(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		System.out.println("LSD Inside intercept: " + backendUrl);
 		String token = request.getHeader(AUTHORIZATION_HEADER);
-		// printRequest(request);
+		printRequest(request);
 		if (token == null || !validateTokenWithBackend(token, request)) {
 			response.sendError(HttpServletResponse.SC_FORBIDDEN, "LDS storage invalid or missing token");
 			throw new IOException("Request blocked due to invalid token");
@@ -76,6 +76,29 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		}
 		System.out.println("LDS Exception occured. Blocking the request");
 		return false;
+	}
+
+	private void printRequest(HttpServletRequest request) {
+		String method = request.getMethod();
+		String contextPath = request.getContextPath();
+		String pathInfo = request.getPathInfo();
+		String requestUrl = request.getRequestURL().toString();
+		String queryString = request.getQueryString();
+		System.out.println("method: " + method);
+		System.out.println("contextPath: " + contextPath);
+		System.out.println("pathInfo: " + pathInfo);
+		System.out.println("requestURL: " + requestUrl);
+		System.out.println("queryString: " + queryString);
+		String localAddr = request.getLocalAddr();
+		System.out.println("localAddress: " + localAddr);
+		String localName = request.getLocalName();
+		System.out.println("localName: " + localName);
+		String remoteAddrs = request.getRemoteAddr();
+		String remoteHost = request.getRemoteHost();
+		int remotePort = request.getRemotePort();
+		System.out.println("remote address: " + remoteAddrs);
+		System.out.println("remote host: " + remoteHost);
+		System.out.println("remote port: " + remotePort);
 	}
 
 }

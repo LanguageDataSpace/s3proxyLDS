@@ -1968,11 +1968,13 @@ public class S3ProxyHandler {
         }
 
         if (contentLengthString == null) {
-            throw new S3Exception(S3ErrorCode.MISSING_CONTENT_LENGTH);
+            //throw new S3Exception(S3ErrorCode.MISSING_CONTENT_LENGTH);
         }
-        long contentLength;
+        long contentLength=0;
         try {
-            contentLength = Long.parseLong(contentLengthString);
+        	if(contentLengthString != null) {
+        		contentLength = Long.parseLong(contentLengthString);
+        	}
         } catch (NumberFormatException nfe) {
             throw new S3Exception(S3ErrorCode.INVALID_ARGUMENT, nfe);
         }
@@ -2005,10 +2007,20 @@ public class S3ProxyHandler {
         }
 
         String eTag;
-        BlobBuilder.PayloadBlobBuilder builder = blobStore
-                .blobBuilder(blobName)
-                .payload(is)
-                .contentLength(contentLength);
+        BlobBuilder.PayloadBlobBuilder builder;
+        
+        if(contentLengthString==null) {
+        	builder = blobStore
+                    .blobBuilder(blobName)
+                    .payload(is);
+        }else {
+        	builder = blobStore
+                    .blobBuilder(blobName)
+                    .payload(is)
+                    .contentLength(contentLength);
+        }
+        
+        
 
         String storageClass = request.getHeader(AwsHttpHeaders.STORAGE_CLASS);
         if (storageClass == null || storageClass.equalsIgnoreCase("STANDARD")) {

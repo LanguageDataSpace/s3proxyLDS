@@ -1982,7 +1982,7 @@ public class S3ProxyHandler {
             throw new S3Exception(S3ErrorCode.INVALID_ARGUMENT);
         }
         if (contentLength > maxSinglePartObjectSize) {
-            throw new S3Exception(S3ErrorCode.ENTITY_TOO_LARGE);
+           // throw new S3Exception(S3ErrorCode.ENTITY_TOO_LARGE);
         }
 
         BlobAccess access;

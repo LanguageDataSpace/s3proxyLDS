@@ -36,7 +36,8 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		// System.out.println("LDS Token is: " + token);
 		if (token == null) {
 			System.out.println("LDS token: " + token);
-		} else if (cookieToken != null) {
+		}
+		if (token == null && cookieToken != null) {
 			token = cookieToken;
 			System.out.println("LDS cookie token: " + token);
 		}
@@ -93,7 +94,7 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		Cookie[] cookies = request.getCookies();
 		if (cookies != null) {
 			for (Cookie cookie : cookies) {
-				System.out.println(cookie);
+				System.out.println(cookie.getName() + "\t" + cookie.getValue());
 				if ("Authorization".equals(cookie.getName())) {
 					try {
 						return URLDecoder.decode(cookie.getValue(), StandardCharsets.UTF_8.name());

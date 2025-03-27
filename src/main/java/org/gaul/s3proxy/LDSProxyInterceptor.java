@@ -94,7 +94,6 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		Cookie[] cookies = request.getCookies();
 		if (cookies != null) {
 			for (Cookie cookie : cookies) {
-				System.out.println(cookie.getName() + "\t" + cookie.getValue());
 				if ("Authorization".equals(cookie.getName())) {
 					try {
 						return URLDecoder.decode(cookie.getValue(), StandardCharsets.UTF_8.name());

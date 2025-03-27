@@ -4,9 +4,12 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 
 import com.google.common.base.Strings;
 
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -28,10 +31,14 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 	public void intercept(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		System.out.println("LSD Inside intercept: " + backendUrl);
 		String token = request.getHeader(AUTHORIZATION_HEADER);
-		//printRequest(request);
-		//System.out.println("LDS Token is: " + token);
-		if(token==null){
-			System.out.println("LDS token: "+token);
+		String cookieToken = getTokenFromCookies(request);
+		// printRequest(request);
+		// System.out.println("LDS Token is: " + token);
+		if (token == null) {
+			System.out.println("LDS token: " + token);
+		} else if (cookieToken != null) {
+			token = cookieToken;
+			System.out.println("LDS cookie token: " + token);
 		}
 		if (token == null || !validateTokenWithBackend(token, request)) {
 			response.sendError(HttpServletResponse.SC_FORBIDDEN, "LDS storage invalid or missing token");
@@ -80,6 +87,24 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		}
 		System.out.println("LDS Exception occured. Blocking the request");
 		return false;
+	}
+
+	private String getTokenFromCookies(HttpServletRequest request) {
+		Cookie[] cookies = request.getCookies();
+		if (cookies != null) {
+			for (Cookie cookie : cookies) {
+				System.out.println(cookie);
+				if ("Authorization".equals(cookie.getName())) {
+					try {
+						return URLDecoder.decode(cookie.getValue(), StandardCharsets.UTF_8.name());
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+
+		return null;
 	}
 
 	private void printRequest(HttpServletRequest request) {

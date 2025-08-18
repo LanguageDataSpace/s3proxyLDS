@@ -20,6 +20,7 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 	private final String AUTHORIZATION_HEADER = "Authorization";
 	private final String METHOD_HEADER = "method";
 	private final String OPEN_HEADER = "open";
+    private final String PATH_HEADER = "path";
 
 	public LDSProxyInterceptor(URI backendUrl, String ldsProxyPassword, String ldsProxyPasswordHeader) {
 		this.backendUrl = backendUrl;
@@ -55,12 +56,15 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 
 			String openData = originalRequest.getHeader(OPEN_HEADER);
 			String method = originalRequest.getMethod();
+            String path_info = originalRequest.getPathInfo();
+            System.out.println("Original request url " + path_info);
 
 			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
 			connection.setRequestMethod("GET");
 			connection.setRequestProperty(AUTHORIZATION_HEADER, token);
 			connection.setRequestProperty(METHOD_HEADER, method);
+            connection.setRequestProperty(PATH_HEADER, path_info);
 
 			if (!Strings.isNullOrEmpty(openData)) {
 				connection.setRequestProperty(OPEN_HEADER, openData);

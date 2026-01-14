@@ -206,7 +206,10 @@ public final class S3Proxy {
 					.getProperty(S3ProxyConstants.PROPERTY_LDS_PROXY_PUBLIC_FOLDER);
 			boolean hasProxyPublicFolder = !Strings.isNullOrEmpty(ldsProxyPublicFolderStr);
 			if (hasProxyPublicFolder) {
+				System.out.println("FOUND public folder environment");
 				builder.ldsProxyPublicFolder(ldsProxyPublicFolderStr);
+			} else {
+				System.out.println("EMPTY ENVIRONMENT VARIABLE PUBLIC");
 			}
 
 			AuthenticationType authorization = AuthenticationType.fromString(authorizationString);

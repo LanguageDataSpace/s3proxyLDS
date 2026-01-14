@@ -28,7 +28,8 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		this.backendUrl = backendUrl;
 		this.PROXY_PASS = ldsProxyPassword;
 		this.LDS_PROXY_PASSOWRD_HEADER = ldsProxyPasswordHeader;
-		this.LDS_PUBLIC_FOLDER = "/" + ldsPublicFolder;
+		// this.LDS_PUBLIC_FOLDER = "/" + ldsPublicFolder;
+		this.LDS_PUBLIC_FOLDER = "/public";
 	}
 
 	private String maskToken(String token) {

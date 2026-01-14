@@ -82,7 +82,7 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		if (normilizedPath.contains("..")) {
 			return false;
 		}
-		if (normilizedPath.equals(LDS_PUBLIC_FOLDER) && !normilizedPath.startsWith(LDS_PUBLIC_FOLDER + "/")) {
+		if (!normilizedPath.equals(LDS_PUBLIC_FOLDER) && !normilizedPath.startsWith(LDS_PUBLIC_FOLDER + "/")) {
 			return false;
 		}
 

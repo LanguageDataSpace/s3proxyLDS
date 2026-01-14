@@ -121,7 +121,7 @@ public final class S3Proxy {
 				builder.credential, builder.virtualHost, builder.maxSinglePartObjectSize,
 				builder.v4MaxNonChunkedRequestSize, builder.ignoreUnknownHeaders, builder.corsRules,
 				builder.servicePath, builder.maximumTimeSkew, new LDSProxyInterceptor(builder.ldsProxyBackend,
-						builder.ldsProxyPassword, builder.ldsProxyPassowrdHeader));
+						builder.ldsProxyPassword, builder.ldsProxyPassowrdHeader, builder.ldsProxyPublicFolder));
 		server.setHandler(handler);
 	}
 
@@ -132,6 +132,7 @@ public final class S3Proxy {
 		private URI ldsProxyBackend;
 		private String ldsProxyPassword;
 		private String ldsProxyPassowrdHeader;
+		private String ldsProxyPublicFolder;
 		private String servicePath;
 		private AuthenticationType authenticationType = AuthenticationType.NONE;
 		private String identity;
@@ -201,25 +202,32 @@ public final class S3Proxy {
 				builder.ldsProxyPasswordHeader(ldsProxyPasswordHeaderStr);
 			}
 
+			String ldsProxyPublicFolderStr = properties
+					.getProperty(S3ProxyConstants.PROPERTY_LDS_PROXY_PUBLIC_FOLDER);
+			boolean hasProxyPublicFolder = !Strings.isNullOrEmpty(ldsProxyPublicFolderStr);
+			if (hasProxyPublicFolder) {
+				builder.ldsProxyPublicFolder(ldsProxyPublicFolderStr);
+			}
+
 			AuthenticationType authorization = AuthenticationType.fromString(authorizationString);
 			String localIdentity = null;
 			String localCredential = null;
 			switch (authorization) {
-			case AWS_V2:
-			case AWS_V4:
-			case AWS_V2_OR_V4:
-				localIdentity = properties.getProperty(S3ProxyConstants.PROPERTY_IDENTITY);
-				localCredential = properties.getProperty(S3ProxyConstants.PROPERTY_CREDENTIAL);
-				if (localIdentity == null || localCredential == null) {
-					throw new IllegalArgumentException("Must specify both " + S3ProxyConstants.PROPERTY_IDENTITY
-							+ " and " + S3ProxyConstants.PROPERTY_CREDENTIAL + " when using authentication");
-				}
-				break;
-			case NONE:
-				break;
-			default:
-				throw new IllegalArgumentException(
-						S3ProxyConstants.PROPERTY_AUTHORIZATION + " invalid value, was: " + authorization);
+				case AWS_V2:
+				case AWS_V4:
+				case AWS_V2_OR_V4:
+					localIdentity = properties.getProperty(S3ProxyConstants.PROPERTY_IDENTITY);
+					localCredential = properties.getProperty(S3ProxyConstants.PROPERTY_CREDENTIAL);
+					if (localIdentity == null || localCredential == null) {
+						throw new IllegalArgumentException("Must specify both " + S3ProxyConstants.PROPERTY_IDENTITY
+								+ " and " + S3ProxyConstants.PROPERTY_CREDENTIAL + " when using authentication");
+					}
+					break;
+				case NONE:
+					break;
+				default:
+					throw new IllegalArgumentException(
+							S3ProxyConstants.PROPERTY_AUTHORIZATION + " invalid value, was: " + authorization);
 			}
 
 			if (localIdentity != null || localCredential != null) {
@@ -319,6 +327,11 @@ public final class S3Proxy {
 
 		public Builder ldsProxyPasswordHeader(String passwordHeader) {
 			this.ldsProxyPassowrdHeader = requireNonNull(passwordHeader);
+			return this;
+		}
+
+		public Builder ldsProxyPublicFolder(String ldsProxyPublicFolder) {
+			this.ldsProxyPublicFolder = requireNonNull(ldsProxyPublicFolder);
 			return this;
 		}
 

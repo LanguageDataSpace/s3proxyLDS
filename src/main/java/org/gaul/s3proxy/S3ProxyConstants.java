@@ -25,6 +25,7 @@ public final class S3ProxyConstants {
 	public static final String PROPERTY_LDS_PROXY_BACKEND = "s3proxy.lds-backend-proxy";
 	public static final String PROPERTY_LDS_PROXY_PASSWORD = "S3PROXY_LDS_BACKEND_PASSWORD";
 	public static final String PROPERTY_LDS_PROXY_PASSWORD_HEADER = "S3PROXY_LDS_BACKEND_PASSWORD_HEADER";
+	public static final String PROPERTY_LDS_PROXY_PUBLIC_FOLDER = "S3PROXY_LDS_PUBLIC_FOLDER";
 
 	/**
 	 * Path to prepend to all requests, e.g., https://endpoint/service-path/object.

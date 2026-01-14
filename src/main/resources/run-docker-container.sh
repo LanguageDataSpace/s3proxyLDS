@@ -6,6 +6,7 @@ exec java \
     -Ds3proxy.lds-backend-proxy="${S3PROXY_LDS_BACKEND_PROXY}" \
     -Ds3proxy.lds-backend-passowrd="${S3PROXY_LDS_BACKEND_PASSWORD}" \
     -Ds3proxy.lds-backend-passowrd-header="${S3PROXY_LDS_BACKEND_PASSWORD_HEADER}" \
+    -Ds3proxy.lds-public-folder="${S3PROXY_LDS_PUBLIC_FOLDER}" \
     -Ds3proxy.endpoint="${S3PROXY_ENDPOINT}" \
     -Ds3proxy.secure-endpoint="${S3PROXY_SECURE_ENDPOINT}" \
     -Ds3proxy.virtual-host="${S3PROXY_VIRTUALHOST}" \

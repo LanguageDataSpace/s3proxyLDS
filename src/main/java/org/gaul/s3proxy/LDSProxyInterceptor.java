@@ -17,15 +17,25 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 	private final URI backendUrl;
 	private final String PROXY_PASS;
 	private final String LDS_PROXY_PASSOWRD_HEADER;
+	private final String LDS_PUBLIC_FOLDER;
 	private final String AUTHORIZATION_HEADER = "Authorization";
 	private final String METHOD_HEADER = "method";
 	private final String OPEN_HEADER = "open";
-    private final String PATH_HEADER = "path";
+	private final String PATH_HEADER = "path";
 
-	public LDSProxyInterceptor(URI backendUrl, String ldsProxyPassword, String ldsProxyPasswordHeader) {
+	public LDSProxyInterceptor(URI backendUrl, String ldsProxyPassword, String ldsProxyPasswordHeader,
+			String ldsPublicFolder) {
 		this.backendUrl = backendUrl;
 		this.PROXY_PASS = ldsProxyPassword;
 		this.LDS_PROXY_PASSOWRD_HEADER = ldsProxyPasswordHeader;
+		this.LDS_PUBLIC_FOLDER = "/" + ldsPublicFolder;
+	}
+
+	private String maskToken(String token) {
+		if (token == null || token.length() < 8) {
+			return "***";
+		}
+		return token.substring(0, 4) + "..." + token.substring(token.length() - 4);
 	}
 
 	@Override
@@ -35,18 +45,56 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		String cookieToken = getTokenFromCookies(request);
 		// printRequest(request);
 		// System.out.println("LDS Token is: " + token);
-		if (token == null) {
-			System.out.println("LDS token: " + token);
+		if (isOpenPath(request)) {
+			System.out.println("Open Request approved");
+		} else {
+			if (token == null) {
+				System.out.println("LDS token is null: " + token);
+			}
+			if (token == null && cookieToken != null) {
+				token = cookieToken;
+				System.out.println("LDS cookie token: " + maskToken(token));
+			}
+			if (token == null || !validateTokenWithBackend(token, request)) {
+				response.sendError(HttpServletResponse.SC_FORBIDDEN, "LDS storage invalid or missing token");
+				throw new IOException("Request blocked due to invalid token");
+			}
+			System.out.println("Request approved");
 		}
-		if (token == null && cookieToken != null) {
-			token = cookieToken;
-			System.out.println("LDS cookie token: " + token);
+	}
+
+	private boolean isOpenPath(HttpServletRequest originalRequest) {
+		String method = originalRequest.getMethod();
+		// String requestUrl = originalRequest.getRequestURL().toString();
+		String path_info = originalRequest.getPathInfo();
+		System.out.println("LDS path info: " + path_info);
+		if (!method.equalsIgnoreCase("get")) {
+			return false;
 		}
-		if (token == null || !validateTokenWithBackend(token, request)) {
-			response.sendError(HttpServletResponse.SC_FORBIDDEN, "LDS storage invalid or missing token");
-			throw new IOException("Request blocked due to invalid token");
+		if (path_info == null) {
+			return false;
 		}
-		System.out.println("Request approved");
+		// if (!path_info.startsWith(LDS_PUBLIC_FOLDER)) {
+		// return false;
+		// }
+		String normilizedPath = normalizePath(path_info);
+		if (normilizedPath.contains("..")) {
+			return false;
+		}
+		if (normilizedPath.equals(LDS_PUBLIC_FOLDER) && !normilizedPath.startsWith(LDS_PUBLIC_FOLDER + "/")) {
+			return false;
+		}
+
+		/*
+		 * String[] segments = normilizedPath.split("/");
+		 * for (int i = 0; i < segments.length; i++) {
+		 * if (segments[i].equals(LDS_PUBLIC_FOLDER.replace("/", ""))) {
+		 * return true;
+		 * }
+		 * }
+		 */
+
+		return true;
 	}
 
 	private boolean validateTokenWithBackend(String token, HttpServletRequest originalRequest) {
@@ -56,15 +104,15 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 
 			String openData = originalRequest.getHeader(OPEN_HEADER);
 			String method = originalRequest.getMethod();
-            String path_info = originalRequest.getPathInfo();
-            System.out.println("Original request url " + path_info);
+			String path_info = originalRequest.getPathInfo();
+			System.out.println("Original request url " + path_info);
 
 			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
 			connection.setRequestMethod("GET");
 			connection.setRequestProperty(AUTHORIZATION_HEADER, token);
 			connection.setRequestProperty(METHOD_HEADER, method);
-            connection.setRequestProperty(PATH_HEADER, path_info);
+			connection.setRequestProperty(PATH_HEADER, path_info);
 
 			if (!Strings.isNullOrEmpty(openData)) {
 				connection.setRequestProperty(OPEN_HEADER, openData);
@@ -109,6 +157,17 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		}
 
 		return null;
+	}
+
+	private String normalizePath(String path) {
+		try {
+			String decoded = java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8);
+			String normalized = decoded.replaceAll("/+", "/");
+
+			return normalized;
+		} catch (Exception e) {
+			return "";
+		}
 	}
 
 	private void printRequest(HttpServletRequest request) {

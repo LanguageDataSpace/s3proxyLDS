@@ -68,10 +68,11 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		// String requestUrl = originalRequest.getRequestURL().toString();
 		String path_info = originalRequest.getPathInfo();
 		System.out.println("LDS path info: " + path_info);
+		System.out.println("Public folder: " + LDS_PUBLIC_FOLDER);
 		if (!method.equalsIgnoreCase("get")) {
 			return false;
 		}
-		if (path_info == null) {
+		if (path_info == null || path_info.trim() == "" || path_info == "/") {
 			return false;
 		}
 		// if (!path_info.startsWith(LDS_PUBLIC_FOLDER)) {

@@ -68,18 +68,22 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 		String method = originalRequest.getMethod();
 		// String requestUrl = originalRequest.getRequestURL().toString();
 		String path_info = originalRequest.getPathInfo();
-		System.out.println("LDS path info: " + path_info);
-		System.out.println("Public folder: " + LDS_PUBLIC_FOLDER);
-		if (!method.equalsIgnoreCase("get")) {
+		// System.out.println("LDS path info: " + path_info);
+		// System.out.println("Public folder: " + LDS_PUBLIC_FOLDER);
+		if (method != null && !method.equalsIgnoreCase("get")) {
 			return false;
 		}
-		if (path_info == null || path_info.trim() == "" || path_info == "/") {
+		if (path_info == null || path_info.trim().isEmpty() || path_info.equals("/")) {
 			return false;
 		}
+		path_info = path_info.trim();
 		// if (!path_info.startsWith(LDS_PUBLIC_FOLDER)) {
 		// return false;
 		// }
 		String normilizedPath = normalizePath(path_info);
+		if (normilizedPath.isEmpty()) {
+			return false;
+		}
 		if (normilizedPath.contains("..")) {
 			return false;
 		}
@@ -163,10 +167,25 @@ public class LDSProxyInterceptor implements LDSCustomInterceptorI {
 
 	private String normalizePath(String path) {
 		try {
-			String decoded = java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8);
-			String normalized = decoded.replaceAll("/+", "/");
+			String decoded = path;
+			String prev;
+			int maxIterations = 5;
+			boolean flag = false;
+			for (int i = 0; i < maxIterations; i++) {
+				prev = decoded;
+				decoded = java.net.URLDecoder.decode(decoded, java.nio.charset.StandardCharsets.UTF_8.name());
+				if (decoded.equals(prev)) {
+					flag = true;
+					break;
+				}
+			}
+			if (!flag) {
+				return "";
+			}
+			decoded = decoded.replace('\\', '/');
+			decoded = decoded.replaceAll("/+", "/").trim();
 
-			return normalized;
+			return decoded;
 		} catch (Exception e) {
 			return "";
 		}

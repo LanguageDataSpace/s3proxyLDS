@@ -1,6 +1,7 @@
 #!/bin/sh
 
 exec java \
+    -XX:-UseBASE64Intrinsics \
     $S3PROXY_JAVA_OPTS \
     -DLOG_LEVEL="${LOG_LEVEL}" \
     -Ds3proxy.lds-backend-proxy="${S3PROXY_LDS_BACKEND_PROXY}" \
